@@ -1,11 +1,12 @@
 {
   "version": 2,
   "functions": {
-    "api/**/*.js": {
-      "runtime": "nodejs@22"
+    "api/server.js": {
+      "runtime": "nodejs@22",
+      "maxDuration": 10
     }
   },
   "routes": [
-    { "src": "/(.*)", "dest": "/server.js" }
+    { "src": "/(.*)", "dest": "/api/server.js" }
   ]
 }
