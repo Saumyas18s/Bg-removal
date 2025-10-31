@@ -3,31 +3,40 @@ import mongoose from "mongoose";
 const connectDB = async () => {
   const uri = process.env.MONGODB_URI;
   if (!uri) {
-    // Fail fast with a clear message so the runtime logs show the real issue.
-    throw new Error('MONGODB_URI environment variable is not set.');
+    throw new Error("MONGODB_URI environment variable is not set.");
   }
 
-  // In serverless environments reuse existing connection if present.
+  // Avoid reconnecting if already connected
   if (mongoose.connection.readyState === 1) {
-    console.log('Using existing mongoose connection');
+    console.log("✅ Using existing mongoose connection");
     return;
   }
 
-  mongoose.connection.on('connected', () => {
-    console.log('Database Connected');
-  });
-  mongoose.connection.on('error', (err) => {
-    console.error('Mongoose connection error:', err);
+  // Connection event listeners
+  mongoose.connection.on("connected", () => {
+    console.log("✅ MongoDB connected");
   });
 
-  // If MONGODB_URI is e.g. mongodb+srv://user:pass@host, avoid appending DB name blindly.
-  const connectionString = uri.includes('/') ? uri : `${uri}/BG-REMOVAL`;
-
-  await mongoose.connect(connectionString, {
-    // recommended options, depending on mongoose version; adjust if needed
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
+  mongoose.connection.on("error", (err) => {
+    console.error("❌ Mongoose connection error:", err);
+    // Optional: fail fast in serverless environments
+    process.exit(1);
   });
+
+  // Ensure TLS is explicitly enabled for SRV connections
+  const connectionString = uri.includes("/") ? uri : `${uri}/BG-REMOVAL`;
+
+  try {
+    await mongoose.connect(connectionString, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 5000, // fail fast if can't connect
+      tls: true, // explicitly enable TLS
+    });
+  } catch (err) {
+    console.error("❌ Failed to connect to MongoDB:", err);
+    throw err;
+  }
 };
 
 export default connectDB;
