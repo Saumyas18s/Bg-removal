@@ -1,11 +1,15 @@
-    {
-      "version": 2,
-      "functions": {
-      },
-      "routes": [
-        {
-          "src": "/(.*)",
-          "dest": "/api/index.js"
-        }
-      ]
+{
+  "version": 2,
+  "functions": {
+    "api/index.js": {
+      "runtime": "nodejs@18",
+      "maxDuration": 10
     }
+  },
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/api/index.js"
+    }
+  ]
+}
