@@ -1,6 +1,9 @@
 import 'dotenv/config';
 import app from './api/index.js';
-
+import express from 'express';
+import cors from 'cors';
+import connectDB from '../configs/mongodb.js';
+import userRouter from '../routes/userRoutes.js';
 // Global error handlers for unhandled rejections
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
