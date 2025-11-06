@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import connectDB from '../configs/mongodb.js';
-
+import userRouter from '../routes/userRoutes.js';
 console.log("✅ api/index.js loaded");
 
 const app = express();
@@ -46,6 +46,7 @@ app.get('/', async (req, res) => {
   }
 });
 
+app.use('/api/user',userRouter);
 // Add your other routes here
 // Example: import bgRoutes from '../controllers/bgRemoval.js';
 // app.use('/api/remove-bg', bgRoutes);
