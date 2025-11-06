@@ -1,39 +1,57 @@
 // API Controller function to manage clerk user with database
-// http:// localhost:4000/api/user/webhooks
-// controllers/clerkController.js
+// http://localhost:4000/api/user/webhooks
 import { Webhook } from 'svix';
 import userModel from '../models/userModel.js';
 
 const clerkWebhooks = async (req, res) => {
   try {
+    console.log("🔔 Webhook received");
+    
     const secret = process.env.CLERK_WEBHOOK_SECRET;
     if (!secret) {
-      console.error('Missing CLERK_WEBHOOK_SECRET');
+      console.error('❌ Missing CLERK_WEBHOOK_SECRET');
       return res.status(500).json({ success: false, message: 'Server misconfiguration' });
+    }
+
+    // Get headers - Clerk sends these with svix- prefix
+    const svixId = req.headers['svix-id'];
+    const svixTimestamp = req.headers['svix-timestamp'];
+    const svixSignature = req.headers['svix-signature'];
+
+    if (!svixId || !svixTimestamp || !svixSignature) {
+      console.error('❌ Missing svix headers');
+      return res.status(400).json({ success: false, message: 'Missing webhook headers' });
     }
 
     // req.body is a Buffer because of express.raw in the route
     const rawBody = req.body instanceof Buffer ? req.body.toString('utf8') : JSON.stringify(req.body);
+    
+    console.log("📦 Raw body length:", rawBody.length);
 
     const whook = new Webhook(secret);
 
-    // svix expects the headers used by Clerk; include those present on the request
-    const headers = {
-      'svix-id': req.header('svix-id'),
-      'svix-timestamp': req.header('svix-timestamp'),
-      'svix-signature': req.header('svix-signature')
-    };
+    // Verify webhook signature
+    let payload;
+    try {
+      payload = whook.verify(rawBody, {
+        'svix-id': svixId,
+        'svix-timestamp': svixTimestamp,
+        'svix-signature': svixSignature
+      });
+      console.log("✅ Webhook signature verified");
+    } catch (err) {
+      console.error('❌ Webhook verification failed:', err.message);
+      return res.status(401).json({ success: false, message: 'Invalid signature' });
+    }
 
-    // Verify will throw if verification fails
-    await whook.verify(rawBody, headers);
-
-    // Now parse the payload
-    const payload = JSON.parse(rawBody);
     const { data, type } = payload;
 
     if (!type || !data) {
+      console.error('❌ Invalid webhook payload');
       return res.status(400).json({ success: false, message: 'Invalid webhook payload' });
     }
+
+    console.log(`📨 Processing webhook type: ${type}`);
 
     switch (type) {
       case 'user.created': {
@@ -45,13 +63,17 @@ const clerkWebhooks = async (req, res) => {
           photo: data.image_url || ''
         };
 
+        console.log("👤 Creating user:", userData.email);
+
         try {
-          await userModel.create(userData);
+          const newUser = await userModel.create(userData);
+          console.log("✅ User created successfully:", newUser._id);
         } catch (err) {
           // E11000 duplicate key -> user already exists (idempotency)
           if (err.code === 11000) {
-            console.warn('User already exists, skipping create', err.keyValue);
+            console.warn('⚠️ User already exists, skipping create', err.keyValue);
           } else {
+            console.error("❌ Error creating user:", err);
             throw err;
           }
         }
@@ -67,29 +89,49 @@ const clerkWebhooks = async (req, res) => {
           photo: data.image_url || ''
         };
 
-        await userModel.findOneAndUpdate({ clerkId: data.id }, userData, { upsert: false });
+        console.log("👤 Updating user:", data.id);
+
+        const updatedUser = await userModel.findOneAndUpdate(
+          { clerkId: data.id }, 
+          userData, 
+          { new: true }
+        );
+        
+        if (updatedUser) {
+          console.log("✅ User updated successfully:", updatedUser._id);
+        } else {
+          console.warn("⚠️ User not found for update:", data.id);
+        }
+
         return res.status(200).json({ success: true });
       }
 
       case 'user.deleted': {
-        await userModel.findOneAndDelete({ clerkId: data.id });
+        console.log("👤 Deleting user:", data.id);
+        
+        const deletedUser = await userModel.findOneAndDelete({ clerkId: data.id });
+        
+        if (deletedUser) {
+          console.log("✅ User deleted successfully:", deletedUser._id);
+        } else {
+          console.warn("⚠️ User not found for deletion:", data.id);
+        }
+
         return res.status(200).json({ success: true });
       }
 
       default:
         // Unhandled event type — reply 200 to acknowledge but log for inspection
-        console.log('Unhandled webhook type:', type);
+        console.log('ℹ️ Unhandled webhook type:', type);
         return res.status(200).json({ success: true, message: 'Unhandled event type' });
     }
   } catch (error) {
-    // Svix verify throws for signature/timestamp problems — return 401
-    if (error && error.message && error.message.toLowerCase().includes('signature')) {
-      console.error('Webhook verification failed:', error.message);
-      return res.status(401).json({ success: false, message: 'Invalid signature' });
-    }
-
-    console.error('Webhook handler error:', error);
-    return res.status(500).json({ success: false, message: 'Internal Server Error' });
+    console.error('❌ Webhook handler error:', error);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Internal Server Error',
+      error: error.message 
+    });
   }
 };
 

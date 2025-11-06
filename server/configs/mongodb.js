@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 const connectDB = async () => {
   const uri = process.env.MONGODB_URI;
   if (!uri) {
-    throw new Error("MONGODB_URI environment variable is not set.");
+    throw new Error("❌ MONGODB_URI environment variable is not set.");
   }
 
   // Avoid reconnecting if already connected
@@ -14,27 +14,30 @@ const connectDB = async () => {
 
   // Connection event listeners
   mongoose.connection.on("connected", () => {
-    console.log("✅ MongoDB connected");
+    console.log("✅ MongoDB connected successfully");
   });
 
   mongoose.connection.on("error", (err) => {
     console.error("❌ Mongoose connection error:", err);
-    // Optional: fail fast in serverless environments
-    process.exit(1);
   });
 
-  // Ensure TLS is explicitly enabled for SRV connections
-  const connectionString = uri.includes("/") ? uri : `${uri}/BG-REMOVAL`;
+  mongoose.connection.on("disconnected", () => {
+    console.log("⚠️ MongoDB disconnected");
+  });
+
+  // Extract database name from URI or use default
+  const connectionString = uri.includes("?") 
+    ? uri 
+    : `${uri}/eventsphere?retryWrites=true&w=majority`;
 
   try {
     await mongoose.connect(connectionString, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
       serverSelectionTimeoutMS: 5000, // fail fast if can't connect
-      tls: true, // explicitly enable TLS
+      socketTimeoutMS: 45000,
     });
+    console.log("🎉 MongoDB connection established");
   } catch (err) {
-    console.error("❌ Failed to connect to MongoDB:", err);
+    console.error("❌ Failed to connect to MongoDB:", err.message);
     throw err;
   }
 };
